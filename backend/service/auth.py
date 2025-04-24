@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from jose import jwt, JWTError
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
+from typing import Optional
 
-from backend.models.users import User
-from backend.models.token import UserToken
-from backend.config.settings import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
-from backend.data import engine
+from models.users import User
+from models.token import UserToken
+from config.settings import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from data import engine
 
 from pydantic import BaseModel
 
@@ -16,6 +17,14 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class UserCreate(BaseModel):
+    email: str
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 # ------------------ FastAPI setup ------------------ #
 auth_router = APIRouter()
@@ -35,9 +44,12 @@ def hash_password(pw: str) -> str:
     return pwd_context.hash(pw)
 
 # ------------------ JWT Utils ------------------ #
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -64,35 +76,51 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 # ------------------ Register ------------------ #
-@auth_router.post("/register")
-def register(user: User, db: Session = Depends(get_db)):
-    existing = db.exec(select(User).where(User.email == user.email)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+@auth_router.post("/register", response_model=dict)
+def register_user(user_data: UserCreate):
+    existing_user = get_user(user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
     
-    user.hashed_password = hash_password(user.hashed_password)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return {"msg": "Registered", "user_id": user.id}
+    hashed_password = hash_password(user_data.password)
+    new_user = User(email=user_data.email, username= user_data.username, hashed_password=hashed_password)
+    
+    with Session(engine) as session:
+        session.add(new_user)
+        session.commit()
+        session.refresh(new_user)
+    
+    return {"message": "User created successfully"}
 
 # ------------------ Login ------------------ #
-@auth_router.post("/login")
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.exec(select(User).where(User.email == request.email)).first()
-    if not user or not verify_password(request.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    access_token = create_access_token(data={"sub": user.email})
-    db_token = UserToken(user_id=user.id, access_token=access_token)
-    db.add(db_token)
-    db.commit()
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
-
+@auth_router.post("/login", response_model=Token)
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    
+    with Session(engine) as session:
+        user_token = UserToken(
+            user_id=user.id,
+            token=access_token,
+            expires_at=datetime.utcnow() + access_token_expires
+        )
+        session.add(user_token)
+        session.commit()
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
 # ------------------ Logout ------------------ #
 @auth_router.post("/logout")
@@ -109,3 +137,24 @@ def get_profile(user: User = Depends(get_current_user)):
         "email": user.email,
         "username": user.username
     }
+
+@auth_router.get("/user-by-email")
+def user_by_email(email: str):
+    user = get_user(email)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return user
+
+def get_user(email: str):
+    with Session(engine) as session:
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
+        return user
+
+def authenticate_user(email: str, password: str):
+    user = get_user(email)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user

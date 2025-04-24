@@ -1,10 +1,10 @@
 from sqlmodel import SQLModel, Field, create_engine
-from backend.models.users import User
+from models.users import User
   # 引入你定义的模型
-from backend.models.token import UserToken
+from models.token import UserToken
 
 # 数据库文件路径（保存在 models 目录下）
-sqlite_file_name = "backend/models/tradingai.db"
+sqlite_file_name = "models/tradingai.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 # 创建 SQLite 引擎
