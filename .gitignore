@@ -1,6 +1,20 @@
-# 虚拟环境目录
-.venv/
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+venv/
 tradingenv/
 
-# 环境配置
+# Environment variables
 .env
+
+# VSCode settings
+.vscode/
+
+# OS system files
+.DS_Store
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/

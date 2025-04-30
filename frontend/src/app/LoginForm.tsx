@@ -1,3 +1,4 @@
+// app/LoginForm.tsx
 "use client"
 
 import { useState } from "react"
@@ -25,7 +26,7 @@ export default function LoginForm() {
         formData.append("username", email) // OAuth2 表单期望 username 字段
         formData.append("password", password)
 
-        const res = await api.post("/login", formData.toString(), {
+        const res = await api.post("/auth/login", formData.toString(), {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded"
           }
@@ -41,7 +42,7 @@ export default function LoginForm() {
           return
         }
 
-        const res = await api.post("/register", {
+        const res = await api.post("/auth/register", {
           email,
           username,
           password,

@@ -49,4 +49,28 @@ api.interceptors.response.use(
   }
 )
 
+export async function getUserProfile() {
+  const response = await api.get("/users/me");
+  return response.data;
+}
+
+// 获取热门股票
+export async function fetchTopStocks() {
+  const res = await api.get("/stocks/top")
+  return res.data
+}
+
+// 获取热门加密货币
+export async function fetchTopCryptos() {
+  const res = await api.get("/cryptos/top")
+  return res.data
+}
+
+// 获取最新金融新闻
+export async function fetchLatestNews() {
+  const res = await api.get("/news/latest")
+  return res.data
+}
+
+
 export default api
