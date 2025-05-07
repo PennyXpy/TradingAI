@@ -1,6 +1,8 @@
 from sqlmodel import SQLModel, Field, create_engine
 from models.users import User, FollowedAsset
 from models.token import UserToken
+from models.followed import Followed
+from models.investments import Investment
 import os
 
 # 确保数据库目录存在

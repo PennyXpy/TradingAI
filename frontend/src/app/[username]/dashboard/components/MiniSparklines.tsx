@@ -2,7 +2,7 @@
 
 interface Props {
   data: number[];
-  positive: boolean;           // true=涨  false=跌
+  positive: boolean;
   width?: number;
   height?: number;
 }
@@ -13,7 +13,11 @@ export default function MiniSparkline({
   width = 60,
   height = 24,
 }: Props) {
-  if (!data.length) return null;
+  // 增强数据验证，确保data存在且不为空
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return null;
+  }
+  
   const max = Math.max(...data);
   const min = Math.min(...data);
   const scaleY = (n: number) =>

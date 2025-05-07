@@ -1,37 +1,37 @@
-// ⚠️ 这是 *Client Component*（需要 hooks，所以 "use client"）
 "use client";
 
-import Header from "./components/Header";
-import IndexGrid from "./components/IndexGrid";
-import StockList from "./components/StockList";
-import CryptoList from "./components/CryptoList";
-import NewsList from "./components/NewsList";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import api from "@/lib/api";
 
-export default function DashboardPage() {
+export default function DashboardRedirect() {
+  const router = useRouter();
+  
+  useEffect(() => {
+    const redirectUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          router.push("/");
+          return;
+        }
+        
+        const response = await api.get("/auth/me");
+        const username = response.data.username;
+        router.push(`/${username}/dashboard`);
+      } catch (error) {
+        console.error("重定向失败:", error);
+        localStorage.removeItem("token");
+        router.push("/");
+      }
+    };
+    
+    redirectUser();
+  }, [router]);
+
   return (
-    <div className="flex flex-col h-full">
-      <Header />
-
-      <div className="flex flex-1 p-4 gap-6 overflow-hidden">
-        {/* 左列 */}
-        <div className="w-1/3 flex flex-col gap-4">
-        <IndexGrid />
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex-1 overflow-auto">
-            <h3 className="font-semibold mb-2">🔥 热门股票</h3>
-            <StockList />
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex-1 overflow-auto">
-            <h3 className="font-semibold mb-2">💰 热门加密货币</h3>
-            <CryptoList />
-          </div>
-        </div>
-
-        {/* 右列 */}
-        <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow p-4 overflow-y-auto">
-          <h3 className="font-semibold mb-2">📰 最新财经新闻</h3>
-          <NewsList />
-        </div>
-      </div>
+    <div className="flex items-center justify-center h-screen">
+      <div className="animate-spin h-10 w-10 border-4 border-blue-500 rounded-full border-t-transparent"></div>
     </div>
   );
 }

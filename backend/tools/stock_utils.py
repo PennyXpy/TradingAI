@@ -1,118 +1,271 @@
-# backend/tools/stock_utils.py
-
-import os
-import asyncio
-import aiohttp
-from dotenv import load_dotenv
-from asyncio import Semaphore
-
-load_dotenv()
-
-# FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
-# FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
-# MAX_CONCURRENT_REQUESTS = 10  # 每次最多发10个请求，防止429
-
-# semaphore = Semaphore(MAX_CONCURRENT_REQUESTS)
-
-# async def fetch_symbol_quote(session, ticker):
-#     """
-#     异步获取单个股票的最新价格和成交量，加限流保护
-#     """
-#     try:
-#         async with semaphore:  # 控制并发数量
-#             url = f"{FINNHUB_BASE_URL}/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
-#             async with session.get(url) as response:
-#                 if response.status == 429:
-#                     print(f"❌ 429 Too Many Requests for {ticker}. Skipping...")
-#                     return None
-#                 data = await response.json()
-#                 return {
-#                     "ticker": ticker,
-#                     "price": data.get("c", 0),
-#                     "volume": data.get("v", 0),
-#                     "change_percent": data.get("dp", 0)
-#                 }
-#     except Exception as e:
-#         print(f"❌ Error fetching quote for {ticker}: {e}")
-#         return None
-
-# async def get_top_traded_stocks(limit=10):
-#     """
-#     获取交易量最大的股票列表（加速+限流版）
-#     """
-#     try:
-#         async with aiohttp.ClientSession() as session:
-#             symbols_url = f"{FINNHUB_BASE_URL}/stock/symbol?exchange=US&token={FINNHUB_API_KEY}"
-#             async with session.get(symbols_url) as response:
-#                 symbols = await response.json()
-
-#             if not isinstance(symbols, list):
-#                 print("❌ Unexpected data format for symbols:", symbols)
-#                 return []
-
-#             tickers = [symbol['symbol'] for symbol in symbols if symbol.get('symbol')]
-
-#             tasks = [fetch_symbol_quote(session, ticker) for ticker in tickers[:200]]  # 只取前200个symbol防止压力太大
-#             all_quotes = await asyncio.gather(*tasks)
-
-#             valid_quotes = [quote for quote in all_quotes if quote and quote["volume"] > 0]
-#             sorted_quotes = sorted(valid_quotes, key=lambda x: x["volume"], reverse=True)
-
-#             return sorted_quotes[:limit]
-
-#     except Exception as e:
-#         print(f"❌ Error fetching top traded stocks: {e}")
-#         return []
-
-
 import yfinance as yf
+import logging
+import asyncio
+from .cache import cache_result
 
-PRESET_TICKERS = [
-    "AAPL", "MSFT", "AMZN", "GOOGL", "META",
-    "NVDA", "TSLA", "AMD", "NFLX", "BRK-B",
-    "JPM", "V", "DIS", "BA", "PYPL",
-    "BABA", "INTC", "XOM", "WMT", "PFE",
-    "COIN", "CRM", "SHOP", "NKE", "UBER",
-    "SQ", "PLTR", "SOFI", "CVX", "TSM",
-    "ABNB", "SNOW", "SPOT", "ADBE", "MRNA"
+logger = logging.getLogger(__name__)
+
+# 常用股票默认数据
+DEFAULT_STOCK_DATA = {
+    "AAPL": {"name": "Apple Inc.", "price": 175.0, "change": 0, "change_percent": 0},
+    "MSFT": {"name": "Microsoft Corporation", "price": 350.0, "change": 0, "change_percent": 0},
+    "AMZN": {"name": "Amazon.com, Inc.", "price": 130.0, "change": 0, "change_percent": 0},
+    "GOOGL": {"name": "Alphabet Inc.", "price": 150.0, "change": 0, "change_percent": 0},
+    "META": {"name": "Meta Platforms, Inc.", "price": 340.0, "change": 0, "change_percent": 0},
+    "TSLA": {"name": "Tesla, Inc.", "price": 240.0, "change": 0, "change_percent": 0},
+    "NVDA": {"name": "NVIDIA Corporation", "price": 800.0, "change": 0, "change_percent": 0},
+    # 可以添加更多默认数据
+}
+
+async def _fetch_stock(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1d")
+        
+        if hist.empty:
+            logger.warning(f"⚠️ {symbol} 没有返回数据")
+            raise ValueError(f"No data for {symbol}")
+            
+        # 获取公司信息
+        try:
+            info = ticker.info
+            name = info.get('shortName', symbol)
+        except:
+            name = DEFAULT_STOCK_DATA.get(symbol, {}).get("name", symbol)
+        
+        # 计算价格变化
+        latest_price = hist['Close'].iloc[-1]
+        prev_close = hist['Open'].iloc[0]
+        change = latest_price - prev_close
+        change_percent = (change / prev_close) * 100 if prev_close > 0 else 0
+        
+        return {
+            "symbol": symbol,
+            "name": name,
+            "price": round(latest_price, 2),
+            "change": round(change, 2),
+            "change_percent": round(change_percent, 2),
+            "fallback": False
+        }
+    except Exception as e:
+        logger.error(f"❌ Error fetching {symbol}: {str(e)}")
+        default_data = DEFAULT_STOCK_DATA.get(symbol, {"name": symbol, "price": 0, "change": 0, "change_percent": 0})
+        return {
+            "symbol": symbol,
+            "name": default_data["name"],
+            "price": default_data["price"],
+            "change": default_data["change"],
+            "change_percent": default_data["change_percent"],
+            "fallback": True
+        }
+
+@cache_result(expire_seconds=900)  # 缓存15分钟
+async def get_top_traded_stocks(limit=5):
+    # 热门科技股列表
+    symbols = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA"][:limit]
+    
+    try:
+        # 并行获取所有股票数据
+        coros = [_fetch_stock(symbol) for symbol in symbols]
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        
+        # 处理返回的结果
+        valid_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                symbol = symbols[i]
+                default_data = DEFAULT_STOCK_DATA.get(symbol, {"name": symbol, "price": 0, "change": 0, "change_percent": 0})
+                valid_results.append({
+                    "symbol": symbol,
+                    "name": default_data["name"],
+                    "price": default_data["price"],
+                    "change": default_data["change"],
+                    "change_percent": default_data["change_percent"],
+                    "fallback": True
+                })
+            else:
+                valid_results.append(result)
+        
+        return valid_results
+        
+    except Exception as e:
+        logger.error(f"获取热门股票失败: {str(e)}")
+        # 返回默认数据
+        return [
+            {
+                "symbol": symbol,
+                "name": DEFAULT_STOCK_DATA.get(symbol, {}).get("name", symbol),
+                "price": DEFAULT_STOCK_DATA.get(symbol, {}).get("price", 0),
+                "change": DEFAULT_STOCK_DATA.get(symbol, {}).get("change", 0),
+                "change_percent": DEFAULT_STOCK_DATA.get(symbol, {}).get("change_percent", 0),
+                "fallback": True
+            }
+            for symbol in symbols
+        ]
+        
+# ------------------------------------------------------------------
+# 新增常见股票列表 - 用于搜索功能
+COMMON_STOCKS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", 
+    "JPM", "V", "JNJ", "WMT", "PG", "NFLX", "DIS", "BAC", 
+    "INTC", "CSCO", "XOM", "CMCSA", "PFE", "T", "VZ", "KO"
 ]
 
-MAX_CONCURRENT_REQUESTS = 5  # 控制并发，防止被ban
+# 新增函数 - 股票搜索
+@cache_result(expire_seconds=600)  # 缓存10分钟
+async def search_stocks(query):
+    """
+    搜索股票，根据查询字符串匹配股票代码或公司名称
+    """
+    if not query or len(query) < 1:
+        return []
 
-async def fetch_ticker_data(ticker: str, semaphore: asyncio.Semaphore):
-    async with semaphore:
-        try:
-            stock = yf.Ticker(ticker)
-            data = stock.history(period="2d")  # 注意用2d，因为要取前一天收盘价
+    query = query.upper()
+    results = []
+    
+    try:
+        # 直接匹配
+        if query in COMMON_STOCKS:
+            stock = await get_stock_details(query)
+            if stock:
+                return [stock]
+        
+        # 部分匹配
+        matched_symbols = [s for s in COMMON_STOCKS if query in s]
+        
+        # 并行获取匹配的股票详情
+        coroutines = [get_stock_details(symbol) for symbol in matched_symbols[:10]]
+        results = await asyncio.gather(*coroutines)
+        
+        # 过滤掉None值
+        results = [r for r in results if r]
+        
+        # 如果没有结果，尝试使用yfinance的ticker查询
+        if not results and len(query) >= 2:
+            try:
+                ticker = yf.Ticker(query)
+                info = ticker.info
+                if 'symbol' in info:
+                    stock = await get_stock_details(query)
+                    if stock:
+                        results.append(stock)
+            except Exception as e:
+                logger.warning(f"yfinance搜索失败: {str(e)}")
+        
+        return results
+    except Exception as e:
+        logger.error(f"搜索股票失败: {str(e)}")
+        return []
 
-            if data.empty or len(data) < 1:
-                return None
-
-            latest = data.iloc[-1]
-            prev_close = data['Close'].iloc[-2] if len(data) > 1 else latest['Close']
-            change_percent = ((latest['Close'] - prev_close) / prev_close) * 100 if prev_close else 0
-            spark = data['Close'].tail(30).round(2).tolist()
+# 新增函数 - 获取股票详情
+@cache_result(expire_seconds=300)  # 缓存5分钟
+async def get_stock_details(symbol):
+    """
+    获取单个股票的详细信息，包括价格、变化等
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        
+        # 获取当日股票数据
+        hist = ticker.history(period="1d")
+        if hist.empty:
+            logger.warning(f"{symbol} 没有返回数据")
+            return use_default_stock_data(symbol)
             
-            return {
-                "ticker": ticker,
-                "price": round(latest['Close'], 2),
-                "volume": int(latest['Volume']),  # 加入成交量
-                "change_percent": round(change_percent, 2),
-                "spark": spark,
-            }
+        # 获取公司信息
+        info = {}
+        try:
+            info = ticker.info
         except Exception as e:
-            print(f"❌ Error fetching {ticker}: {e}")
-            return None
+            logger.warning(f"无法获取{symbol}的信息: {str(e)}")
+            
+        # 提取基本信息
+        name = info.get('shortName', info.get('longName', symbol))
+        sector = info.get('sector', '')
+        industry = info.get('industry', '')
+        
+        # 计算价格变化
+        latest_price = hist['Close'].iloc[-1]
+        prev_close = hist['Open'].iloc[0]
+        change = latest_price - prev_close
+        change_percent = (change / prev_close) * 100 if prev_close > 0 else 0
+        
+        # 额外市场数据
+        market_cap = info.get('marketCap', 0)
+        pe_ratio = info.get('trailingPE', 0)
+        dividend_yield = info.get('dividendYield', 0)
+        
+        return {
+            "symbol": symbol,
+            "name": name,
+            "sector": sector,
+            "industry": industry,
+            "price": round(latest_price, 2),
+            "change": round(change, 2),
+            "change_percent": round(change_percent, 2),
+            "market_cap": market_cap,
+            "pe_ratio": pe_ratio,
+            "dividend_yield": dividend_yield * 100 if dividend_yield else 0,
+            "volume": int(hist['Volume'].iloc[-1]) if not hist['Volume'].empty else 0,
+            "fallback": False
+        }
+    except Exception as e:
+        logger.error(f"获取股票详情失败 {symbol}: {str(e)}")
+        return use_default_stock_data(symbol)
 
-async def get_top_traded_stocks(limit: int = 10):
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    tasks = [fetch_ticker_data(ticker, semaphore) for ticker in PRESET_TICKERS]
-    results = await asyncio.gather(*tasks)
+def use_default_stock_data(symbol):
+    """当API调用失败时返回默认数据"""
+    if symbol in DEFAULT_STOCK_DATA:
+        data = DEFAULT_STOCK_DATA[symbol].copy()
+        data["symbol"] = symbol
+        data["fallback"] = True
+        return data
+    return {
+        "symbol": symbol,
+        "name": f"{symbol} Inc.",
+        "sector": "",
+        "industry": "",
+        "price": 0,
+        "change": 0,
+        "change_percent": 0,
+        "market_cap": 0,
+        "pe_ratio": 0,
+        "dividend_yield": 0,
+        "volume": 0,
+        "fallback": True
+    }
 
-    # 过滤掉无效数据
-    valid_stocks = [stock for stock in results if stock is not None]
-
-    # 按成交量倒序排列（最大交易量靠前）
-    sorted_stocks = sorted(valid_stocks, key=lambda x: x['volume'], reverse=True)
-
-    return sorted_stocks[:limit]
+# 新增函数 - 获取股票历史数据
+@cache_result(expire_seconds=3600)  # 缓存1小时
+async def get_stock_historical_data(symbol, period="1mo", interval="1d"):
+    """
+    获取股票历史数据，用于图表显示
+    
+    参数:
+        symbol: 股票代码
+        period: 时间范围 (1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max)
+        interval: 时间间隔 (1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo)
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=period, interval=interval)
+        
+        if hist.empty:
+            return {"error": "无数据"}
+        
+        # 将数据转换为前端友好的格式
+        data = []
+        for index, row in hist.iterrows():
+            data.append({
+                "date": index.strftime('%Y-%m-%d %H:%M:%S'),
+                "open": round(row['Open'], 2),
+                "high": round(row['High'], 2),
+                "low": round(row['Low'], 2),
+                "close": round(row['Close'], 2),
+                "volume": int(row['Volume'])
+            })
+        
+        return data
+    except Exception as e:
+        logger.error(f"获取股票历史数据失败 {symbol}: {str(e)}")
+        return {"error": str(e)}

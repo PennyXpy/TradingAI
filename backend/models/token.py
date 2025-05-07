@@ -2,7 +2,7 @@
 
 from sqlmodel import SQLModel, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 class UserToken(SQLModel, table=True):
@@ -10,4 +10,4 @@ class UserToken(SQLModel, table=True):
     user_id: str = Field(foreign_key="user.id")
     token: str
     expires_at: datetime
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

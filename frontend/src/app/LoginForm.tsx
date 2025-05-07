@@ -5,6 +5,7 @@ import { useState } from "react"
 import api from "@/lib/api"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { AxiosError } from "axios" // 导入 AxiosError 类型用于更好的错误处理
 
 export default function LoginForm() {
   const [email, setEmail] = useState("")
@@ -26,14 +27,20 @@ export default function LoginForm() {
         formData.append("username", email) // OAuth2 表单期望 username 字段
         formData.append("password", password)
 
-        const res = await api.post("/auth/login", formData.toString(), {
+        // 修复: 使用解构赋值直接获取 data，避免 res 变量未使用警告
+        const { data } = await api.post("/auth/login", formData.toString(), {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded"
           }
         })
 
-        localStorage.setItem("token", res.data.access_token)
-        router.push("/dashboard")
+        localStorage.setItem("token", data.access_token)
+        // 获取用户信息
+        const userInfo = await api.get("/auth/me")
+        const username = userInfo.data.username
+        
+        // 重定向到用户特定的dashboard
+        router.push(`/${username}/dashboard`)
       } else {
         // 注册逻辑
         if (password !== confirmPassword) {
@@ -42,7 +49,8 @@ export default function LoginForm() {
           return
         }
 
-        const res = await api.post("/auth/register", {
+        // 修复: 使用解构赋值直接获取需要的数据
+        await api.post("/auth/register", {
           email,
           username,
           password,
@@ -51,9 +59,16 @@ export default function LoginForm() {
         alert("✅ 注册成功，请登录")
         setIsLogin(true)
       }
-    } catch (err: any) {
+    } catch (err: unknown) { // 修复: 使用 unknown 代替 any
       console.error(err)
-      alert(`❌ ${isLogin ? "登录" : "注册"}失败: ${err.response?.data?.detail || "请稍后再试"}`)
+      
+      // 改进错误处理逻辑，使用类型守卫
+      let errorMessage = "请稍后再试";
+      if (err instanceof AxiosError && err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      }
+      
+      alert(`❌ ${isLogin ? "登录" : "注册"}失败: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
