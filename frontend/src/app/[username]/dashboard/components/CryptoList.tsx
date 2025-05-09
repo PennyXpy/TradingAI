@@ -25,7 +25,7 @@ export default function CryptoList() {
       try {
         setLoading(true);
         
-        const response = await api.get("/api/cryptos/top");
+        const response = await api.get("/cryptos/top");
         
         if (isMounted) {
           setCoins(response.data);

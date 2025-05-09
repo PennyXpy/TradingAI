@@ -27,7 +27,7 @@ export default function IndexGrid() {
         setLoading(true);
         setError(null);
         
-        const response = await api.get("/api/market/indexes");
+        const response = await api.get("/market/indexes");
         
         if (isMounted) {
           setIndexes(response.data);

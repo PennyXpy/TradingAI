@@ -25,7 +25,7 @@ export default function StockList() {
       try {
         setLoading(true);
         
-        const response = await api.get("/api/stocks/top");
+        const response = await api.get("/stocks/top");
         
         if (isMounted) {
           setStocks(response.data);

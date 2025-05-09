@@ -73,6 +73,50 @@ def get_eodhd_market_news(limit=10):
         })
 
     return news_list
+# --------------------------------------------------------------
+
+@cache_result(expire_seconds=1800)  # 缓存30分钟
+async def get_stock_related_news_EODHO(symbol, limit=10):
+    """
+    从 EODHD API 获取最新的金融新闻列表
+    
+    注意：此函数使用EODHD API，需要API密钥
+    """
+    if not EODHD_API_KEY:
+        logger.warning("EODHD API密钥未设置，无法获取EODHD新闻")
+        return []
+        
+    news_url = f"{BASE_URL}/news?s={symbol}&offset=0&limit={limit}&api_token={EODHD_API_KEY}&fmt=json"
+    try:
+        response = requests.get(news_url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"获取EODHD新闻失败: {e}")
+        return []
+
+    news_items = response.json()
+
+    if not isinstance(news_items, list):
+        logger.error(f"意外的EODHD新闻格式: {news_items}")
+        return []
+
+    news_list = []
+    for item in news_items:
+        published_raw = item.get("date", "")
+        if not published_raw:
+            continue  # 跳过没有发布日期的新闻
+
+        news_list.append({
+            "title": item.get("title", ""),
+            "url": item.get("link", ""),
+            "published_at": convert_utc_to_et(published_raw),
+            "time_ago": get_time_ago(published_raw),
+            "source": item.get("source", ""),
+            "sentiment": item.get("sentiment", {}),  # 可能是空字典
+            "description": item.get("summary", "")
+        })
+
+    return news_list
 
 # ====================== YFinance API 实现 ======================
 
@@ -114,6 +158,8 @@ async def get_stock_related_news(symbol, limit=5, tab='news'):
     except Exception as e:
         logger.error(f"获取股票相关新闻失败 {symbol}: {str(e)}")
         return []
+
+# ---------------------------------------------------------------------- 上面这个function可能吊用没有
 
 @cache_result(expire_seconds=1800)  # 缓存30分钟
 async def get_latest_market_news(limit=5):
@@ -200,6 +246,7 @@ async def get_portfolio_news(symbols, limit=10):
         # 创建异步任务获取每个股票的新闻
         for symbol in symbols:
             tasks.append(get_stock_related_news(symbol, news_per_symbol))
+            #get_eodhd_market_news
         
         # 并行执行所有任务
         results = await asyncio.gather(*tasks, return_exceptions=True)

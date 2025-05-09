@@ -174,7 +174,7 @@ export async function getCryptoDetails(symbol: string): Promise<StockData> {
 // ====================== 新闻 API ======================
 // 获取与特定股票相关的新闻
 export async function getStockRelatedNews(symbol: string, limit: number = 5, tab: string = "news"): Promise<NewsItem[]> {
-  const res = await api.get(`/news/related?symbol=${encodeURIComponent(symbol)}&limit=${limit}&tab=${tab}`);
+  const res = await api.get(`/news/related?symbol=${encodeURIComponent(symbol)}&limit=${limit}`);
   return res.data;
 }
 

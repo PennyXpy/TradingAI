@@ -24,5 +24,5 @@ def read_root():
 
 # 👇 注册多个模块路由
 app.include_router(auth_router, prefix="/auth")  # 登录注册相关接口
-app.include_router(main_router, prefix="/api") # 股票/新闻/加密币信息接口
-app.include_router(portfolio_router, prefix="/api/portfolio", tags=["portfolio"])
+app.include_router(main_router) # 股票/新闻/加密币信息接口
+app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])

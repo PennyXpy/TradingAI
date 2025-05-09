@@ -16,7 +16,7 @@ export default function NewsList() {
 
   useEffect(() => {
     api
-      .get("/api/news/latest")
+      .get("/news/latest")
       .then((res) => setNews(Array.isArray(res.data) ? res.data : []))
       .catch((err) => {
         console.error(err);

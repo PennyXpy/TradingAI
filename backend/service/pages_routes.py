@@ -3,7 +3,7 @@ from typing import Optional, List
 from tools.market_indexes import get_market_indexes  
 from tools.stock_utils import get_top_traded_stocks, search_stocks, get_stock_details, get_stock_historical_data
 from tools.crypto_utils import get_top_cryptos, search_cryptos, get_crypto_details
-from tools.news_utils import get_latest_market_news, get_stock_related_news, get_portfolio_news
+from tools.news_utils import get_latest_market_news, get_stock_related_news, get_portfolio_news, get_stock_related_news_EODHO
 
 
 router = APIRouter()
@@ -35,6 +35,8 @@ async def latest_news(limit: int = Query(5, ge=1, le=10)):
     获取最新市场新闻
     """
     return await get_latest_market_news(limit=limit)
+
+# ---------------------------------------------------------------------------
 
 @router.get("/stocks/search")
 async def stocks_search(query: str, limit: int = Query(10, ge=1, le=20)):
@@ -73,7 +75,7 @@ async def crypto_details(symbol: str):
     return result
 
 @router.get("/news/related")
-async def related_news(symbol: str, limit: int = Query(5, ge=1, le=10), tab: str = Query('news')):
+async def related_news(symbol: str, limit: int = Query(5, ge=1, le=10)):
     """
     获取与特定股票相关的新闻
     
@@ -82,7 +84,7 @@ async def related_news(symbol: str, limit: int = Query(5, ge=1, le=10), tab: str
         limit: 返回新闻数量
         tab: 新闻类型, 'news'(普通新闻) 或 'press releases'(新闻发布)
     """
-    return await get_stock_related_news(symbol, limit, tab)
+    return await get_stock_related_news_EODHO(symbol, limit)
 
 @router.get("/news/portfolio")
 async def portfolio_news(symbols: str, limit: int = Query(10, ge=1, le=20)):
