@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingAI Frontend Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        .test-section {
+            background: #1e293b;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .test-title {
+            color: #3b82f6;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 5px 5px 5px 0;
+            display: inline-block;
+        }
+        .success { background: #16a34a; color: white; }
+        .error { background: #dc2626; color: white; }
+        .loading { background: #eab308; color: black; }
+        .info { background: #3b82f6; color: white; }
+        
+        .stock-item {
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stock-symbol {
+            font-weight: bold;
+            color: #3b82f6;
+            font-size: 16px;
+        }
+        .stock-name {
+            color: #9ca3af;
+            font-size: 14px;
+        }
+        .stock-price {
+            text-align: right;
+        }
+        .price {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .change {
+            font-size: 14px;
+        }
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
+        
+        #searchInput {
+            width: 100%;
+            padding: 12px;
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 6px;
+            color: white;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        #searchInput:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        .search-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .ws-messages {
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.price-update { background: #1e40af33; }
+        .message.connection { background: #16a34a33; }
+        .message.error { background: #dc262633; }
+        
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 TradingAI Frontend Test Page</h1>
+    <p>This page tests all frontend functionality without React/Next.js</p>
+    
+    <!-- API Tests -->
+    <div class="test-section">
+        <div class="test-title">📡 API Endpoints Test</div>
+        <div id="apiStatus">
+            <span class="status loading">Testing...</span>
+        </div>
+        <div id="apiResults"></div>
+    </div>
+    
+    <!-- Stock Search Test -->
+    <div class="test-section">
+        <div class="test-title">🔍 Stock Search Test</div>
+        <input type="text" id="searchInput" placeholder="Search for stocks (e.g., AAPL, Microsoft)..." />
+        <div id="searchStatus"></div>
+        <div id="searchResults" class="search-results"></div>
+    </div>
+    
+    <!-- Real-time WebSocket Test -->
+    <div class="test-section">
+        <div class="test-title">🌐 Real-time Data WebSocket Test</div>
+        <div id="wsStatus">
+            <span class="status loading">Connecting...</span>
+        </div>
+        <button onclick="connectRealtime()">Connect</button>
+        <button onclick="subscribeToStocks()">Subscribe to AAPL, GOOGL</button>
+        <button onclick="disconnectRealtime()">Disconnect</button>
+        <div id="wsMessages" class="ws-messages"></div>
+    </div>
+    
+    <!-- AI Chat WebSocket Test -->
+    <div class="test-section">
+        <div class="test-title">🤖 AI Chat WebSocket Test</div>
+        <div id="chatStatus">
+            <span class="status loading">Connecting...</span>
+        </div>
+        <button onclick="connectChat()">Connect</button>
+        <button onclick="sendTestMessage()">Send Test Message</button>
+        <button onclick="disconnectChat()">Disconnect</button>
+        <div id="chatMessages" class="ws-messages"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        const WS_BASE = 'ws://localhost:8000';
+        
+        let realtimeWS = null;
+        let chatWS = null;
+        
+        // Test API Endpoints
+        async function testAPIEndpoints() {
+            const apiStatus = document.getElementById('apiStatus');
+            const apiResults = document.getElementById('apiResults');
+            
+            const endpoints = [
+                { name: 'Health Check', url: '/health' },
+                { name: 'Environment', url: '/debug/env' },
+                { name: 'Market Indexes', url: '/market/indexes' },
+                { name: 'Top Stocks', url: '/stocks/top?limit=3' },
+                { name: 'Stock Search', url: '/stocks/search?query=AAPL' },
+                { name: 'Stock Details', url: '/stocks/AAPL' },
+                { name: 'Latest News', url: '/news/latest?limit=2' },
+                { name: 'Real-time Stats', url: '/realtime/stats' }
+            ];
+            
+            let results = '<h4>API Test Results:</h4>';
+            let allPassed = true;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(API_BASE + endpoint.url);
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        results += `<div>✅ ${endpoint.name}: ${response.status}</div>`;
+                    } else {
+                        results += `<div>❌ ${endpoint.name}: ${response.status}</div>`;
+                        allPassed = false;
+                    }
+                } catch (error) {
+                    results += `<div>❌ ${endpoint.name}: ${error.message}</div>`;
+                    allPassed = false;
+                }
+            }
+            
+            apiStatus.innerHTML = allPassed 
+                ? '<span class="status success">All Passed</span>'
+                : '<span class="status error">Some Failed</span>';
+            
+            apiResults.innerHTML = results;
+        }
+        
+        // Stock Search
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (query.length < 2) {
+                document.getElementById('searchResults').innerHTML = '';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => searchStocks(query), 300);
+        });
+        
+        async function searchStocks(query) {
+            const searchStatus = document.getElementById('searchStatus');
+            const searchResults = document.getElementById('searchResults');
+            
+            searchStatus.innerHTML = '<span class="status loading">Searching...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/stocks/search?query=${encodeURIComponent(query)}&limit=5`);
+                const data = await response.json();
+                
+                if (response.ok && data.results) {
+                    searchStatus.innerHTML = `<span class="status success">${data.count} results</span>`;
+                    
+                    let html = '';
+                    data.results.forEach(stock => {
+                        const changeClass = stock.change >= 0 ? 'positive' : 'negative';
+                        const changeSign = stock.change >= 0 ? '+' : '';
+                        
+                        html += `
+                            <div class="stock-item">
+                                <div>
+                                    <div class="stock-symbol">${stock.symbol}</div>
+                                    <div class="stock-name">${stock.name}</div>
+                                </div>
+                                <div class="stock-price">
+                                    <div class="price">$${stock.price.toFixed(2)}</div>
+                                    <div class="change ${changeClass}">${changeSign}${stock.change.toFixed(2)} (${changeSign}${stock.change_percent.toFixed(2)}%)</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    searchResults.innerHTML = html;
+                } else {
+                    searchStatus.innerHTML = '<span class="status error">Search Failed</span>';
+                    searchResults.innerHTML = '';
+                }
+            } catch (error) {
+                searchStatus.innerHTML = '<span class="status error">Network Error</span>';
+                searchResults.innerHTML = '';
+            }
+        }
+        
+        // Real-time WebSocket
+        function connectRealtime() {
+            const clientId = 'test_client_' + Date.now();
+            realtimeWS = new WebSocket(`${WS_BASE}/ws/realtime?client_id=${clientId}`);
+            
+            realtimeWS.onopen = () => {
+                updateWSStatus('success', 'Connected');
+                addWSMessage('connection', 'Connected to real-time data stream');
+            };
+            
+            realtimeWS.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'price_update') {
+                    const update = data.data;
+                    const changeIndicator = update.change >= 0 ? '📈' : '📉';
+                    addWSMessage('price-update', 
+                        `${changeIndicator} ${update.symbol}: $${update.price} (${update.change >= 0 ? '+' : ''}${update.change})`);
+                } else {
+                    addWSMessage('connection', `${data.type}: ${data.message || JSON.stringify(data)}`);
+                }
+            };
+            
+            realtimeWS.onerror = () => {
+                updateWSStatus('error', 'Connection Error');
+            };
+            
+            realtimeWS.onclose = () => {
+                updateWSStatus('info', 'Disconnected');
+            };
+        }
+        
+        function subscribeToStocks() {
+            if (realtimeWS && realtimeWS.readyState === WebSocket.OPEN) {
+                realtimeWS.send(JSON.stringify({
+                    action: 'subscribe',
+                    symbols: ['AAPL', 'GOOGL']
+                }));
+                addWSMessage('connection', 'Subscribed to AAPL, GOOGL');
+            }
+        }
+        
+        function disconnectRealtime() {
+            if (realtimeWS) {
+                realtimeWS.close();
+            }
+        }
+        
+        function updateWSStatus(type, message) {
+            document.getElementById('wsStatus').innerHTML = 
+                `<span class="status ${type}">${message}</span>`;
+        }
+        
+        function addWSMessage(type, message) {
+            const container = document.getElementById('wsMessages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            messageEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(messageEl);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // AI Chat WebSocket
+        function connectChat() {
+            const userId = 'test_user_' + Date.now();
+            chatWS = new WebSocket(`${WS_BASE}/ws/chat?user_id=${userId}`);
+            
+            chatWS.onopen = () => {
+                updateChatStatus('success', 'Connected');
+                addChatMessage('connection', 'Connected to AI chat');
+            };
+            
+            chatWS.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'response') {
+                    const content = data.data.content || data.data.message || 'No content';
+                    addChatMessage('response', `AI: ${content.substring(0, 100)}...`);
+                } else {
+                    addChatMessage('connection', `${data.type}: ${JSON.stringify(data)}`);
+                }
+            };
+            
+            chatWS.onerror = () => {
+                updateChatStatus('error', 'Connection Error');
+            };
+            
+            chatWS.onclose = () => {
+                updateChatStatus('info', 'Disconnected');
+            };
+        }
+        
+        function sendTestMessage() {
+            if (chatWS && chatWS.readyState === WebSocket.OPEN) {
+                const message = 'Hello! Can you tell me about the current market trends?';
+                chatWS.send(message);
+                addChatMessage('user', `You: ${message}`);
+            }
+        }
+        
+        function disconnectChat() {
+            if (chatWS) {
+                chatWS.close();
+            }
+        }
+        
+        function updateChatStatus(type, message) {
+            document.getElementById('chatStatus').innerHTML = 
+                `<span class="status ${type}">${message}</span>`;
+        }
+        
+        function addChatMessage(type, message) {
+            const container = document.getElementById('chatMessages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            messageEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(messageEl);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // Auto-start API tests when page loads
+        window.addEventListener('load', () => {
+            testAPIEndpoints();
+        });
+    </script>
+</body>
+</html>

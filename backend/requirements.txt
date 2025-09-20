@@ -1,0 +1,32 @@
+# TradingAI Backend Requirements - Essential Only
+# Tested with Python 3.13
+
+# Core web framework
+fastapi==0.115.5
+uvicorn==0.32.1
+websockets>=10.3,<13.0
+
+# Data validation and HTTP
+pydantic==2.10.3
+httpx==0.28.1
+python-multipart==0.0.12
+
+# Database (SQLite)
+sqlmodel==0.0.22
+sqlalchemy==2.0.36
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# HTTP requests
+aiohttp==3.11.10
+
+# AI integration
+openai==1.57.0
+
+# Configuration
+python-dotenv==1.0.1
+
+# Polygon.io client for real-time market data
+polygon-api-client>=1.14.1,<2.0.0

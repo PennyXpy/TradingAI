@@ -22,7 +22,14 @@ export default function LoginForm() {
 
     try {
       if (isLogin) {
-        // 登录逻辑
+        // Mock login for frontend testing
+        if (email === "demo@test.com" && password === "demo123") {
+          localStorage.setItem("token", "mock-token")
+          router.push("/dashboard")
+          return
+        }
+        
+        // Real API login logic
         const formData = new URLSearchParams()
         formData.append("username", email) // OAuth2 表单期望 username 字段
         formData.append("password", password)
@@ -86,6 +93,17 @@ export default function LoginForm() {
       <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-white">
         {isLogin ? "登录账户" : "创建账户"}
       </h2>
+      
+      {isLogin && (
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            <strong>Demo Login Credentials:</strong><br/>
+            Email: demo@test.com<br/>
+            Username: demo<br/>
+            Password: demo123
+          </p>
+        </div>
+      )}
       
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -168,6 +186,7 @@ export default function LoginForm() {
             isLogin ? "登录" : "注册"
           )}
         </button>
+        
       </form>
       
       <div className="mt-6 text-center">

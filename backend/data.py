@@ -1,8 +1,5 @@
 from sqlmodel import SQLModel, Field, create_engine
-from models.users import User, FollowedAsset
-from models.token import UserToken
-from models.followed import Followed
-from models.investments import Investment
+from models.core_models import User, UserFollowing as Followed, UserSession as UserToken
 import os
 
 # 确保数据库目录存在
@@ -20,6 +17,14 @@ engine = create_engine(sqlite_url, echo=True)
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
     print("📍 Absolute path:", os.path.abspath(sqlite_file_name))
+
+# 数据库会话管理
+from sqlmodel import Session
+
+def get_session():
+    """获取数据库会话"""
+    with Session(engine) as session:
+        yield session
 
 
 
